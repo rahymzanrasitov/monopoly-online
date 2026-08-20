@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мультяшная Монополия Онлайн</title>
+    <!-- Библиотека PeerJS для P2P мультиплеера -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Comic Sans MS', 'Chalkboard SE', 'Segoe UI', cursive, sans-serif;
+            background-color: #f4f6f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 6px;
+            user-select: none;
+        }
+
+        h2 {
+            color: #2c3e50;
+            margin-bottom: 4px;
+            font-size: 16px;
+        }
+
+        .board-container {
+            position: relative;
+            width: 310px;
+            height: 310px;
+            background-color: #333;
+            border: 3px solid #2c3e50;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            grid-template-rows: repeat(10, 1fr);
+            gap: 1px;
+            overflow: visible;
+        }
+
+        .center-area {
+            grid-column: 2 / 10;
+            grid-row: 2 / 10;
+            background-color: #ff0000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+            padding: 4px;
+            text-align: center;
+        }
+
+        .reward-banner {
+            background-color: #ffeaa7;
+            color: #d63031;
+            border: 2px dashed #d63031;
+            border-radius: 6px;
+            padding: 3px 6px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 6px;
+            min-height: 24px;
+            width: 90%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 2;
+        }
+
+        .dice-container {
+            display: flex;
+            gap: 14px;
+            margin-bottom: 6px;
+        }
+
+        .dice-img {
+            width: 38px;
+            height: 38px;
+            filter: drop-shadow(0px 4px 5px rgba(0,0,0,0.3));
+            will-change: transform, filter;
+            transition: filter 0.2s ease;
+        }
+
+        @keyframes roll-smooth-down {
+            0% {
+                transform: translateY(-40px);
+                filter: drop-shadow(0px 12px 8px rgba(0,0,0,0.2)) blur(1px);
+            }
+            100% {
+                transform: translateY(0);
+                filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.4)) blur(0px);
+            }
+        }
+
+        .rolling-1, .rolling-2 {
+            animation: roll-smooth-down 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        .cell {
+            background-color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1px;
+            font-size: 6px;
+            font-weight: bold;
+            position: relative;
+            text-align: center;
+            overflow: hidden;
+            word-break: break-word;
+            line-height: 1;
+        }
+
+        .corner {
+            background-color: #d3d3d3 !important;
+            font-size: 7px;
+            font-weight: bold;
+            justify-content: center;
+            color: #000;
+        }
+
+        .color-yellow-light { background-color: #fffae6; }
+        .color-yellow-bright { background-color: #ffd600; }
+        .color-purple-light { background-color: #e1bee7; }
+        .color-purple { background-color: #9c27b0; color: white; }
+        .color-purple-bright { background-color: #d500f9; color: white; }
+        .color-cyan-light { background-color: #80deea; }
+        .color-cyan { background-color: #00bcd4; }
+        .color-cyan-dark { background-color: #00838f; color: white; }
+        .color-lime { background-color: #aeea00; }
+        .color-olive { background-color: #827717; color: white; }
+        .color-green-dark { background-color: #2e7d32; color: white; }
+        .color-orange-light { background-color: #ffe0b2; }
+        .color-orange { background-color: #ff9800; }
+        .color-brown { background-color: #8d6e63; }
+        .color-green-light { background-color: #a5d6a7; }
+        .color-green { background-color: #00e676; }
+        .color-black { background-color: #212121; color: white; }
+        .color-blue-light { background-color: #90caf9; }
+        .color-blue { background-color: #29b6f6; }
+        .color-blue-dark { background-color: #1565c0; color: white; }
+        .color-pink-light { background-color: #f8bbd0; }
+        .color-pink { background-color: #e91e63; color: white; }
+        .color-penalty { background-color: #ff5252; color: white; }
+        .color-gift { background-color: #ffd54f; }
+
+        .cell-title { margin-top: 1px; }
+
+        .cell-price {
+            font-size: 5px;
+            margin-bottom: 1px;
+            opacity: 0.9;
+        }
+
+        .tokens-layer {
+            display: flex;
+            gap: 1px;
+            justify-content: center;
+            align-items: center;
+            position: absolute;
+            bottom: 1px;
+            z-index: 5;
+        }
+
+        .token {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: 1px solid #fff;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+            transition: transform 0.15s ease-in-out;
+        }
+
+        .p1-token { background-color: #ff0000; }
+        .p2-token { background-color: #00e5ff; }
+
+        .token-step {
+            transform: scale(1.4);
+        }
+
+        .particle {
+            position: absolute;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 100;
+            animation: burst 0.6s ease-out forwards;
+        }
+
+        @keyframes burst {
+            0% { opacity: 1; transform: translate(0, 0) scale(1); }
+            100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.2); }
+        }
+
+        .controls {
+            margin-top: 6px;
+            background: white;
+            padding: 8px 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            width: 310px;
+            text-align: center;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+
+        .p1-text { color: #d63031; font-weight: bold; }
+        .p2-text { color: #00838f; font-weight: bold; }
+
+        button.btn-roll {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 3px #27ae60;
+            transition: 0.1s;
+            width: 100%;
+        }
+
+        button.btn-roll:disabled {
+            background-color: #95a5a6;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        button.btn-roll:active:not(:disabled) {
+            box-shadow: 0 1px #27ae60;
+            transform: translateY(2px);
+        }
+
+        #log {
+            margin-top: 4px;
+            font-size: 10px;
+            color: #555;
+            min-height: 24px;
+            line-height: 1.2;
+        }
+
+        .owner-mark {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            position: absolute;
+            top: 1px;
+            right: 1px;
+        }
+        .owner-1 { background-color: #ff0000; }
+        .owner-2 { background-color: #00e5ff; }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 200;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .trade-modal {
+            background: #fff;
+            padding: 12px;
+            border-radius: 10px;
+            width: 260px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            border: 3px solid #f1c40f;
+        }
+
+        .trade-modal h3 { font-size: 14px; margin-bottom: 6px; color: #2c3e50; }
+        .trade-modal p { font-size: 11px; margin-bottom: 8px; color: #555; }
+        .trade-modal input {
+            width: 80%; padding: 4px; margin-bottom: 8px; font-size: 12px; text-align: center;
+            border: 2px solid #bdc3c7; border-radius: 4px;
+        }
+
+        .trade-btns { display: flex; gap: 6px; justify-content: center; }
+        .trade-btns button {
+            padding: 5px 10px; font-size: 10px; font-weight: bold; border: none; border-radius: 4px; cursor: pointer;
+        }
+
+        .btn-offer { background: #e67e22; color: white; }
+        .btn-rent { background: #95a5a6; color: white; }
+
+        .nickname-box {
+            margin-top: 6px;
+            background: #fff;
+            border-top: 1px solid #ddd;
+            padding-top: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 11px;
+        }
+
+        .nickname-box input {
+            padding: 4px 6px;
+            font-size: 11px;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            width: 120px;
+            text-align: center;
+        }
+
+        .nickname-box button {
+            padding: 4px 8px;
+            font-size: 10px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .multiplayer-box {
+            margin-top: 6px;
+            background: #eef2f5;
+            border: 1px dashed #7f8c8d;
+            border-radius: 6px;
+            padding: 6px;
+            font-size: 10px;
+        }
+
+        .multiplayer-box input {
+            padding: 3px;
+            font-size: 10px;
+            width: 100px;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        .multiplayer-box button {
+            padding: 3px 6px;
+            font-size: 10px;
+            cursor: pointer;
+            border: none;
+            background: #3498db;
+            color: white;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🎩 Мультяшная Монополия Онлайн</h2>
+
+    <div class="board-container" id="board">
+        <div class="center-area">
+            <div class="reward-banner" id="reward-banner">
+                Удачи в игре!
+            </div>
+
+            <div class="dice-container">
+                <img class="dice-img" id="dice1" src="" alt="Кубик 1">
+                <img class="dice-img" id="dice2" src="" alt="Кубик 2">
+            </div>
+            <div style="color: white; font-size: 11px; font-weight: bold; text-shadow: 1px 1px 2px #000;">
+                +10$ за каждый ход
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="status-bar">
+            <span class="p1-text"><span id="name1">Игрок 1</span>: $<span id="money1">850</span></span>
+            <span class="p2-text"><span id="name2">Игрок 2</span>: $<span id="money2">850</span></span>
+        </div>
+        <p style="font-size: 11px; margin-bottom: 4px;">
+            Ход: <span id="turn-display" class="p1-text">Игрок 1</span>
+        </p>
+        <button class="btn-roll" id="roll-btn" onclick="handleRollClick()">Бросить кубики 🎲</button>
+        <div id="log">Нажмите кнопку, чтобы сделать ход!</div>
+
+        <div class="nickname-box">
+            <label for="nickname-input">Ваш ник:</label>
+            <input type="text" id="nickname-input" placeholder="Введите ник" maxlength="12" value="Игрок">
+            <button onclick="updateNickname()">Сохранить</button>
+        </div>
+
+        <div class="multiplayer-box">
+            <div id="mp-status">Режим: Одиночный / Локальный</div>
+            <div style="margin-top: 4px; display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                <button onclick="createRoom()">Создать комнату</button>
+                <input type="text" id="room-id-input" placeholder="ID комнаты">
+                <button onclick="joinRoom()">Войти по ID</button>
+            </div>
+            <div id="my-id-display" style="margin-top: 5px; font-weight: bold; color: #2980b9; display: flex; align-items: center; justify-content: center; gap: 6px;"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="trade-modal">
+        <div class="trade-modal">
+            <h3>🤝 Трейд (Сделка)</h3>
+            <p id="trade-desc">Предложите сумму за покупку бизнеса у игрока или заплатите аренду.</p>
+            <input type="number" id="trade-offer-input" placeholder="Ваше предложение ($)" min="1">
+            <div class="trade-btns">
+                <button class="btn-offer" id="btn-submit-offer" onclick="submitTradeOffer()">Предложить выкуп</button>
+                <button class="btn-rent" id="btn-pay-rent" onclick="payRentOnly()">Просто оплатить аренду</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const diceSvgBase = (dots) => {
+            const dotPositions = {
+                1: [[50, 50]],
+                2: [[28, 28], [72, 72]],
+                3: [[28, 28], [50, 50], [72, 72]],
+                4: [[28, 28], [72, 28], [28, 72], [72, 72]],
+                5: [[28, 28], [72, 28], [50, 50], [28, 72], [72, 72]],
+                6: [[28, 25], [72, 25], [28, 50], [72, 50], [28, 75], [72, 75]]
+            };
+
+            const circles = dotPositions[dots].map(pos => 
+                `<circle cx="${pos[0]}" cy="${pos[1]}" r="11" fill="#ffffff" stroke="#111111" stroke-width="3"/>`
+            ).join('');
+
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                <rect x="5" y="5" width="90" height="90" rx="20" fill="#e52d27" stroke="#111111" stroke-width="6"/>
+                <path d="M 12 22 Q 12 12 22 12 L 78 12 Q 88 12 88 22" fill="none" stroke="#ff6b6b" stroke-width="4" stroke-linecap="round"/>
+                ${circles}
+            </svg>`;
+
+            return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+        };
+
+        const diceImages = {
+            1: diceSvgBase(1), 2: diceSvgBase(2), 3: diceSvgBase(3),
+            4: diceSvgBase(4), 5: diceSvgBase(5), 6: diceSvgBase(6)
+        };
+
+        const cellsData = [
+            { id: 0, name: "СТАРТ 🚩", basePrice: 0, owner: null, type: "start", class: "corner" },
+            { id: 1, name: "Подарок 🎁", basePrice: 0, owner: null, type: "gift", class: "color-gift" },
+            { id: 2, name: "Киоск", basePrice: 60, owner: null, type: "biz", class: "color-yellow-light" },
+            { id: 3, name: "Кафе", basePrice: 80, owner: null, type: "biz", class: "color-yellow-bright" },
+            { id: 4, name: "Штраф 💸", basePrice: 0, owner: null, type: "penalty", class: "color-penalty" },
+            { id: 5, name: "Шоурум", basePrice: 100, owner: null, type: "biz", class: "color-purple-light" },
+            { id: 6, name: "Бутик", basePrice: 120, owner: null, type: "biz", class: "color-purple" },
+            { id: 7, name: "Салон", basePrice: 140, owner: null, type: "biz", class: "color-purple-bright" },
+            { id: 8, name: "Подарок 🎁", basePrice: 0, owner: null, type: "gift", class: "color-gift" },
+            { id: 9, name: "Школа 🏫", basePrice: 0, owner: null, type: "school", class: "corner" },
+            { id: 10, name: "Аптека", basePrice: 150, owner: null, type: "biz", class: "color-cyan-light" },
+            { id: 11, name: "Оптика", basePrice: 160, owner: null, type: "biz", class: "color-cyan" },
+            { id: 12, name: "Штраф 💸", basePrice: 0, owner: null, type: "penalty", class: "color-penalty" },
+            { id: 13, name: "Клиника", basePrice: 180, owner: null, type: "biz", class: "color-cyan-dark" },
+            { id: 14, name: "Пиццерия", basePrice: 200, owner: null, type: "biz", class: "color-lime" },
+            { id: 15, name: "Пекарня", basePrice: 220, owner: null, type: "biz", class: "color-olive" },
+            { id: 16, name: "Ресторан", basePrice: 240, owner: null, type: "biz", class: "color-green-dark" },
+            { id: 17, name: "Подарок 🎁", basePrice: 0, owner: null, type: "gift", class: "color-gift" },
+            { id: 18, name: "Казино 🎰", basePrice: 0, owner: null, type: "casino", class: "corner" },
+            { id: 19, name: "Мотель", basePrice: 260, owner: null, type: "biz", class: "color-orange-light" },
+            { id: 20, name: "Штраф 💸", basePrice: 0, owner: null, type: "penalty", class: "color-penalty" },
+            { id: 21, name: "Хостел", basePrice: 280, owner: null, type: "biz", class: "color-orange" },
+            { id: 22, name: "Отель", basePrice: 300, owner: null, type: "biz", class: "color-brown" },
+            { id: 23, name: "Автосалон", basePrice: 320, owner: null, type: "biz", class: "color-green-light" },
+            { id: 24, name: "Заправка", basePrice: 340, owner: null, type: "biz", class: "color-green" },
+            { id: 25, name: "СТО", basePrice: 360, owner: null, type: "biz", class: "color-black" },
+            { id: 26, name: "Подарок 🎁", basePrice: 0, owner: null, type: "gift", class: "color-gift" },
+            { id: 27, name: "Полиция ⛓️", basePrice: 0, owner: null, type: "jail", class: "corner" },
+            { id: 28, name: "Штраф 💸", basePrice: 0, owner: null, type: "penalty", class: "color-penalty" },
+            { id: 29, name: "Кино", basePrice: 380, owner: null, type: "biz", class: "color-blue-light" },
+            { id: 30, name: "Театр", basePrice: 400, owner: null, type: "biz", class: "color-blue" },
+            { id: 31, name: "Концерт", basePrice: 420, owner: null, type: "biz", class: "color-blue-dark" },
+            { id: 32, name: "Клуб", basePrice: 450, owner: null, type: "biz", class: "color-pink-light" },
+            { id: 33, name: "Арена", basePrice: 480, owner: null, type: "biz", class: "color-pink" },
+            { id: 34, name: "Стадион", basePrice: 500, owner: null, type: "biz", class: "color-purple" },
+            { id: 35, name: "Подарок 🎁", basePrice: 0, owner: null, type: "gift", class: "color-gift" }
+        ];
+
+        cellsData.forEach(c => {
+            if (c.type === "biz") {
+                c.buyPrice = c.basePrice * 2;
+                c.rent = Math.floor(c.basePrice * 0.5);
+            }
+        });
+
+        function getCellGridPosition(index) {
+            if (index === 0) return { col: 10, row: 10 };
+            if (index >= 1 && index <= 8) return { col: 10 - index, row: 10 };
+            if (index === 9) return { col: 1, row: 10 };
+            if (index >= 10 && index <= 17) return { col: 1, row: 10 - (index - 9) };
+            if (index === 18) return { col: 1, row: 1 };
+            if (index >= 19 && index <= 26) return { col: 1 + (index - 18), row: 1 };
+            if (index === 27) return { col: 10, row: 1 };
+            if (index >= 28 && index <= 35) return { col: 10, row: 1 + (index - 27) };
+        }
+
+        const players = [
+            { id: 1, name: "Игрок 1", money: 850, pos: 0, skipTurn: false, tokenClass: "p1-token", color: "#ff0000" },
+            { id: 2, name: "Игрок 2", money: 850, pos: 0, skipTurn: false, tokenClass: "p2-token", color: "#00e5ff" }
+        ];
+
+        let currentPlayerIndex = 0;
+        let pendingTrade = null;
+
+        // --- Сетевые переменные ---
+        let peer = null;
+        let conn = null;
+        let myPlayerNumber = 0;
+        let isOnline = false;
+
+        function initBoard() {
+            const boardEl = document.getElementById("board");
+
+            cellsData.forEach((cell, idx) => {
+                const pos = getCellGridPosition(idx);
+                const cellEl = document.createElement("div");
+                cellEl.className = `cell ${cell.class}`;
+                cellEl.style.gridColumn = pos.col;
+                cellEl.style.gridRow = pos.row;
+                cellEl.id = `cell-${cell.id}`;
+
+                let priceHtml = cell.buyPrice ? `<div class="cell-price">$${cell.buyPrice}</div>` : '';
+                cellEl.innerHTML = `
+                    <div class="cell-title">${cell.name}</div>
+                    ${priceHtml}
+                    <div class="tokens-layer" id="tokens-${cell.id}"></div>
+                `;
+
+                boardEl.appendChild(cellEl);
+            });
+
+            document.getElementById("dice1").src = diceImages[1];
+            document.getElementById("dice2").src = diceImages[2];
+
+            updateUI();
+        }
+
+        function updateUI() {
+            cellsData.forEach(cell => {
+                const container = document.getElementById(`tokens-${cell.id}`);
+                if (container) container.innerHTML = "";
+
+                const cellEl = document.getElementById(`cell-${cell.id}`);
+                let ownerMark = cellEl.querySelector(".owner-mark");
+                if (cell.owner) {
+                    if (!ownerMark) {
+                        ownerMark = document.createElement("div");
+                        cellEl.appendChild(ownerMark);
+                    }
+                    ownerMark.className = `owner-mark owner-${cell.owner}`;
+                }
+            });
+
+            players.forEach(p => {
+                const container = document.getElementById(`tokens-${p.pos}`);
+                if (container) {
+                    const token = document.createElement("div");
+                    token.className = `token ${p.tokenClass}`;
+                    container.appendChild(token);
+                }
+            });
+
+            document.getElementById("name1").innerText = players[0].name;
+            document.getElementById("name2").innerText = players[1].name;
+            document.getElementById("money1").innerText = players[0].money;
+            document.getElementById("money2").innerText = players[1].money;
+
+            const activePlayer = players[currentPlayerIndex];
+            const turnSpan = document.getElementById("turn-display");
+            turnSpan.innerText = activePlayer.name;
+            turnSpan.className = currentPlayerIndex === 0 ? "p1-text" : "p2-text";
+
+            const rollBtn = document.getElementById("roll-btn");
+            if (isOnline) {
+                rollBtn.disabled = (currentPlayerIndex + 1 !== myPlayerNumber);
+            } else {
+                rollBtn.disabled = false;
+            }
+        }
+
+        function updateNickname() {
+            const input = document.getElementById("nickname-input");
+            const newName = input.value.trim() || "Игрок";
+
+            if (isOnline && myPlayerNumber !== 0) {
+                players[myPlayerNumber - 1].name = newName;
+                sendNetworkData({ type: 'NICKNAME', playerNum: myPlayerNumber, name: newName });
+            } else {
+                players[0].name = newName;
+            }
+            updateUI();
+        }
+
+        function spawnParticles(cellId, mainColor) {
+            const cellEl = document.getElementById(`cell-${cellId}`);
+            if (!cellEl) return;
+
+            const rect = cellEl.getBoundingClientRect();
+            const colors = [mainColor, '#ffd700', '#ffffff', '#ff9ff3', '#54a0ff'];
+
+            for (let i = 0; i < 16; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 15 + Math.random() * 25;
+                const dx = Math.cos(angle) * distance + 'px';
+                const dy = Math.sin(angle) * distance + 'px';
+
+                particle.style.setProperty('--dx', dx);
+                particle.style.setProperty('--dy', dy);
+                particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+
+                particle.style.left = (rect.width / 2 - 2.5) + 'px';
+                particle.style.top = (rect.height / 2 - 2.5) + 'px';
+
+                cellEl.appendChild(particle);
+
+                setTimeout(() => particle.remove(), 600);
+            }
+        }
+
+        function movePlayerStepByStep(player, steps, onComplete) {
+            let currentStep = 0;
+
+            function step() {
+                if (currentStep < steps) {
+                    const oldPos = player.pos;
+                    player.pos = (player.pos + 1) % cellsData.length;
+
+                    if (player.pos < oldPos) {
+                        player.money += 100;
+                    }
+
+                    updateUI();
+
+                    const container = document.getElementById(`tokens-${player.pos}`);
+                    const token = container ? container.querySelector(`.${player.tokenClass}`) : null;
+                    if (token) {
+                        token.classList.add('token-step');
+                        setTimeout(() => token.classList.remove('token-step'), 100);
+                    }
+
+                    currentStep++;
+                    setTimeout(step, 180);
+                } else {
+                    spawnParticles(player.pos, player.color);
+                    setTimeout(onComplete, 200);
+                }
+            }
+
+            step();
+        }
+
+        function handleRollClick() {
+            if (isOnline && (currentPlayerIndex + 1 !== myPlayerNumber)) return;
+            
+            const d1 = Math.floor(Math.random() * 6) + 1;
+            const d2 = Math.floor(Math.random() * 6) + 1;
+
+            if (isOnline) {
+                sendNetworkData({ type: 'ROLL', d1: d1, d2: d2 });
+            }
+
+            playTurnAnimation(d1, d2);
+        }
+
+        function playTurnAnimation(d1, d2) {
+            const btn = document.getElementById("roll-btn");
+            const d1El = document.getElementById("dice1");
+            const d2El = document.getElementById("dice2");
+
+            btn.disabled = true;
+
+            d1El.classList.remove("rolling-1");
+            d2El.classList.remove("rolling-2");
+            void d1El.offsetWidth; 
+            
+            d1El.classList.add("rolling-1");
+            d2El.classList.add("rolling-2");
+
+            const intervalId = setInterval(() => {
+                d1El.src = diceImages[Math.floor(Math.random() * 6) + 1];
+                d2El.src = diceImages[Math.floor(Math.random() * 6) + 1];
+            }, 60);
+
+            setTimeout(() => {
+                clearInterval(intervalId);
+
+                d1El.src = diceImages[d1];
+                d2El.src = diceImages[d2];
+
+                startTurnLogic(d1, d2);
+            }, 800);
+        }
+
+        function startTurnLogic(d1, d2) {
+            const player = players[currentPlayerIndex];
+            const banner = document.getElementById("reward-banner");
+
+            if (player.skipTurn) {
+                player.skipTurn = false;
+                banner.innerText = "Пропуск хода!";
+                document.getElementById("log").innerText = `${player.name} пропускает этот ход (Полиция)!`;
+                nextTurn();
+                return;
+            }
+
+            banner.innerText = "Идём...";
+            player.money += 10;
+
+            const totalSteps = d1 + d2;
+
+            movePlayerStepByStep(player, totalSteps, () => {
+                finishTurnLogic(player, d1, d2, totalSteps);
+            });
+        }
+
+        function finishTurnLogic(player, d1, d2, step) {
+            const banner = document.getElementById("reward-banner");
+            const cell = cellsData[player.pos];
+            const isDouble = (d1 === d2);
+
+            let actionText = `${player.name} (+10$ за ход) выбросил ${step} (${d1}:${d2}) и встал на "${cell.name}".`;
+
+            if (cell.type === "start") {
+                player.money += 100;
+                banner.innerText = "🚩 СТАРТ: +100$!";
+                actionText += ` Остановка на СТАРТЕ! Дополнительный бонус +100$!`;
+                endTurnStep(isDouble, player);
+            } else if (cell.type === "jail") {
+                player.money -= 200;
+                player.skipTurn = true;
+                banner.innerText = "⛓️ ПОЛИЦИЯ: -$200";
+                actionText += ` Штраф $200 от Полиции и пропуск следующего хода!`;
+                endTurnStep(false, player);
+            } else if (cell.type === "casino") {
+                if (isDouble) {
+                    player.money += 100;
+                    banner.innerText = `🎰 ДУБЛЬ (${d1}:${d2})! +100$`;
+                    actionText += ` Вы выиграли $100 в Казино!`;
+                } else {
+                    banner.innerText = `🎰 Нет дубля (${d1}:${d2})`;
+                    actionText += ` Выигрыша нет (попытка бесплатная).`;
+                }
+                endTurnStep(isDouble, player);
+            } else if (cell.type === "school") {
+                const freeBisses = cellsData.filter(c => c.type === "biz" && c.owner === null);
+                if (freeBisses.length > 0) {
+                    const randomBiz = freeBisses[Math.floor(Math.random() * freeBisses.length)];
+                    randomBiz.owner = player.id;
+                    banner.innerText = `🏫 Подарок: ${randomBiz.name}!`;
+                    actionText += ` Школа подарила вам бизнес "${randomBiz.name}" бесплатно!`;
+                } else {
+                    banner.innerText = "🏫 Нет свободных бизнесов";
+                    actionText += ` Нет свободных бизнесов для подарка!`;
+                }
+                endTurnStep(isDouble, player);
+            } else if (cell.type === "biz") {
+                if (cell.owner === null) {
+                    if (player.money >= cell.buyPrice) {
+                        player.money -= cell.buyPrice;
+                        cell.owner = player.id;
+                        banner.innerText = `Куплено: ${cell.name}`;
+                        actionText += ` Куплено за 2x цену ($${cell.buyPrice})!`;
+                    } else {
+                        banner.innerText = `Не хватило $ на ${cell.name}`;
+                        actionText += ` Не хватает денег на покупку ($${cell.buyPrice}).`;
+                    }
+                    endTurnStep(isDouble, player);
+                } else if (cell.owner !== player.id) {
+                    pendingTrade = {
+                        buyer: player,
+                        seller: players[cell.owner - 1],
+                        cell: cell,
+                        isDouble: isDouble
+                    };
+                    document.getElementById("log").innerText = actionText + ` Это бизнес ${players[cell.owner - 1].name}. Открыт Трейд!`;
+                    showTradeModal(player, cell);
+                    updateUI();
+                    return;
+                } else {
+                    banner.innerText = `Ваш бизнес: ${cell.name}`;
+                    actionText += ` Это ваш бизнес.`;
+                    endTurnStep(isDouble, player);
+                }
+            } else if (cell.type === "penalty") {
+                const penalty = 50;
+                player.money -= penalty;
+                banner.innerText = `💸 Штраф: -$${penalty}`;
+                actionText += ` Вы заплатили штраф $${penalty}!`;
+                endTurnStep(isDouble, player);
+            } else if (cell.type === "gift") {
+                const gift = 50;
+                player.money += gift;
+                banner.innerText = `🎁 Подарок: +$${gift}`;
+                actionText += ` Вы получили подарок $${gift}!`;
+                endTurnStep(isDouble, player);
+            }
+
+            document.getElementById("log").innerText = actionText;
+            updateUI();
+        }
+
+        function endTurnStep(isDouble, player) {
+            if (isDouble && !player.skipTurn) {
+                document.getElementById("log").innerText += " Выпал дубль! Дополнительный ход.";
+                updateUI();
+            } else {
+                nextTurn();
+            }
+        }
+
+        function nextTurn() {
+            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+            updateUI();
+        }
+
+        function showTradeModal(buyer, cell) {
+            const modal = document.getElementById("trade-modal");
+            document.getElementById("trade-desc").innerText = 
+                `${buyer.name}, вы наступили на "${cell.name}" (${players[cell.owner - 1].name}). Аренда: $${cell.rent}. Предложите сумму выкупа или оплатите аренду.`;
+            document.getElementById("trade-offer-input").value = cell.buyPrice;
+            modal.style.display = "flex";
+        }
+
+        function submitTradeOffer() {
+            if (!pendingTrade) return;
+            const offer = parseInt(document.getElementById("trade-offer-input").value);
+            const { buyer, seller, cell, isDouble } = pendingTrade;
+
+            if (isNaN(offer) || offer <= 0) {
+                alert("Введите корректную сумму!");
+                return;
+            }
+
+            if (buyer.money < offer) {
+                alert("У вас недостаточно средств для такого предложения!");
+                return;
+            }
+
+            buyer.money -= offer;
+            seller.money += offer;
+            cell.owner = buyer.id;
+
+            document.getElementById("log").innerText = `${buyer.name} выкупил "${cell.name}" у ${seller.name} за $${offer}!`;
+            closeModalAndContinue(isDouble, buyer);
+        }
+
+        function payRentOnly() {
+            if (!pendingTrade) return;
+            const { buyer, seller, cell, isDouble } = pendingTrade;
+
+            const rent = Math.min(buyer.money, cell.rent);
+            buyer.money -= rent;
+            seller.money += rent;
+
+            document.getElementById("log").innerText = `${buyer.name} оплатил аренду $${rent} игроку ${seller.name}.`;
+            closeModalAndContinue(isDouble, buyer);
+        }
+
+        function closeModalAndContinue(isDouble, buyer) {
+            document.getElementById("trade-modal").style.display = "none";
+            
+            if (isOnline) {
+                sendNetworkData({
+                    type: 'SYNC_STATE',
+                    players: players,
+                    cellsData: cellsData
+                });
+            }
+
+            pendingTrade = null;
+            endTurnStep(isDouble, buyer);
+        }
+
+        // --- Сетевое взаимодействие (PeerJS) ---
+        function createRoom() {
+            peer = new Peer();
+            document.getElementById("mp-status").innerText = "Подключение к серверу...";
+
+            peer.on('open', (id) => {
+                myPlayerNumber = 1;
+                isOnline = true;
+                document.getElementById("mp-status").innerText = "Комната создана! Ждем второго игрока...";
+                
+                document.getElementById("my-id-display").innerHTML = `
+                    ID: <span id="room-id-span">${id}</span>
+                    <button id="copy-btn" onclick="copyRoomId()" style="padding: 2px 6px; font-size: 9px; cursor: pointer; background: #27ae60; color: white; border: none; border-radius: 3px;">📋 Копировать</button>
+                `;
+            });
+
+            peer.on('connection', (c) => {
+                conn = c;
+                setupConnection();
+                document.getElementById("mp-status").innerText = "Игрок 2 подключился! Игра началась.";
+            });
+        }
+
+        function copyRoomId() {
+            const idText = document.getElementById("room-id-span")?.innerText;
+            if (!idText) return;
+
+            navigator.clipboard.writeText(idText).then(() => {
+                const copyBtn = document.getElementById("copy-btn");
+                if (copyBtn) {
+                    copyBtn.innerText = "Скопировано! ✅";
+                    setTimeout(() => { copyBtn.innerText = "📋 Копировать"; }, 2000);
+                }
+            }).catch(err => {
+                alert("Не удалось скопировать ID: " + err);
+            });
+        }
+
+        function joinRoom() {
+            const roomId = document.getElementById("room-id-input").value.trim();
+            if (!roomId) {
+                alert("Введите ID комнаты!");
+                return;
+            }
+
+            peer = new Peer();
+            document.getElementById("mp-status").innerText = "Подключение к комнате...";
+
+            peer.on('open', () => {
+                conn = peer.connect(roomId);
+                myPlayerNumber = 2;
+                isOnline = true;
+                setupConnection();
+            });
+        }
+
+        function setupConnection() {
+            conn.on('open', () => {
+                document.getElementById("mp-status").innerText = "Соединение установлено! Вы Игрок " + myPlayerNumber;
+                updateNickname();
+            });
+
+            conn.on('data', (data) => {
+                handleNetworkData(data);
+            });
+        }
+
+        function sendNetworkData(data) {
+            if (conn && conn.open) {
+                conn.send(data);
+            }
+        }
+
+        function handleNetworkData(data) {
+            if (data.type === 'ROLL') {
+                playTurnAnimation(data.d1, data.d2);
+            } else if (data.type === 'NICKNAME') {
+                players[data.playerNum - 1].name = data.name;
+                updateUI();
+            } else if (data.type === 'SYNC_STATE') {
+                data.players.forEach((p, idx) => {
+                    players[idx].money = p.money;
+                    players[idx].pos = p.pos;
+                    players[idx].skipTurn = p.skipTurn;
+                });
+                data.cellsData.forEach((c, idx) => {
+                    cellsData[idx].owner = c.owner;
+                });
+                updateUI();
+            }
+        }
+
+        window.onload = initBoard;
+    </script>
+</body>
+</html>
